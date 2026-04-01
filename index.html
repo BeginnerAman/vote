@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <style>
-    /* custom glass morphism & smooth transitions */
     body {
       background: radial-gradient(circle at 10% 30%, #0a0f1e, #03050b);
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -21,12 +20,6 @@
       border-radius: 2rem;
       box-shadow: 0 25px 40px -12px rgba(0,0,0,0.5);
     }
-    .neon-glow {
-      transition: all 0.2s ease;
-    }
-    .neon-glow:hover {
-      box-shadow: 0 0 12px rgba(249, 115, 22, 0.6);
-    }
     .roast-text {
       background: linear-gradient(135deg, #f97316, #dc2626);
       -webkit-background-clip: text;
@@ -34,20 +27,12 @@
       color: transparent;
       font-weight: 800;
     }
-    .animate-bounce-light {
-      animation: bounceSoft 0.5s ease;
-    }
-    @keyframes bounceSoft {
-      0%,100%{ transform: translateY(0); }
-      50%{ transform: translateY(-6px); }
-    }
     .vote-btn, .guess-option {
       transition: transform 0.15s, background 0.2s;
     }
     .vote-btn:active, .guess-option:active {
       transform: scale(0.96);
     }
-    /* scrollbar hide but functional */
     ::-webkit-scrollbar {
       width: 4px;
     }
@@ -62,18 +47,14 @@
 </head>
 <body class="text-white font-sans antialiased">
 
-  <!-- MAIN APP WRAPPER -->
   <div id="app" class="min-h-screen flex flex-col items-center justify-center p-4 md:p-6">
-    <!-- dynamic screen injected here -->
     <div id="screenContainer" class="w-full max-w-5xl mx-auto"></div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, set, update, push, remove, onDisconnect, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // Firebase Config (provided)
     const firebaseConfig = {
       apiKey: "AIzaSyBvk4riEC5qhNFNMA9O_rx-S1kAwrHzvbw",
       authDomain: "voteroast-57ecf.firebaseapp.com",
@@ -87,16 +68,13 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // ---------- GLOBAL STATE ----------
     let currentRoomId = null;
     let currentPlayerId = null;
     let currentNickname = null;
     let unsubscribeRoom = null;
     
-    // Helper: generate short room code
     const generateRoomCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
     
-    // Roast messages bank
     const roastMessages = [
       "🍗 *SLOW ROASTED* 🍗: {name} itni lazy hai ki sofa ne inko adopt kar liya! 😂🔥",
       "⚡ *ELECTRIC ROAST*: {name} ki energy level dead snake se bhi neeche 🐍💀",
@@ -115,15 +93,13 @@
       "📸 selfie addict kaun hai?"
     ];
     
-    // Helper: update UI screen
     function renderScreen(component) {
       const container = document.getElementById("screenContainer");
       if (container) container.innerHTML = component;
-      // GSAP micro entrance
       gsap.fromTo(".glass-card", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.05 });
     }
     
-    // ---------- JOIN / CREATE SCREEN ----------
+    // ---------- JOIN / CREATE ----------
     function showJoinScreen() {
       renderScreen(`
         <div class="glass-card p-8 md:p-12 w-full max-w-md mx-auto text-center">
@@ -160,27 +136,21 @@
       });
     }
     
-    // create room
     async function createNewRoom(roomCode, nickname) {
       const roomRef = ref(db, `rooms/${roomCode}`);
       const snapshot = await get(roomRef);
-      if (snapshot.exists()) return createNewRoom(generateRoomCode(), nickname); // collision
+      if (snapshot.exists()) return createNewRoom(generateRoomCode(), nickname);
       const playerId = generatePlayerId();
       const initialData = {
         gameState: "waiting",
         players: {
-          [playerId]: {
-            nickname: nickname,
-            score: 0,
-            joinedAt: Date.now()
-          }
+          [playerId]: { nickname: nickname, score: 0, joinedAt: Date.now() }
         },
-        round1: { votes: {}, roastedPlayerId: null, question: null },
-        round2: { messages: {}, guesses: {}, submittedMessages: false },
+        round1: { votes: {}, roastedPlayerId: null, question: null, pointsAwarded: false },
+        round2: { messages: {}, guesses: {} },
         createdAt: Date.now()
       };
       await set(roomRef, initialData);
-      // set disconnect cleanup
       const playerRef = ref(db, `rooms/${roomCode}/players/${playerId}`);
       onDisconnect(playerRef).remove();
       currentRoomId = roomCode;
@@ -201,11 +171,7 @@
       if (roomData.gameState !== "waiting") return alert("Game already in progress, please wait for replay or new room.");
       const playerId = generatePlayerId();
       const updates = {};
-      updates[`rooms/${roomCode}/players/${playerId}`] = {
-        nickname: nickname,
-        score: 0,
-        joinedAt: Date.now()
-      };
+      updates[`rooms/${roomCode}/players/${playerId}`] = { nickname: nickname, score: 0, joinedAt: Date.now() };
       await update(ref(db), updates);
       const playerRef = ref(db, `rooms/${roomCode}/players/${playerId}`);
       onDisconnect(playerRef).remove();
@@ -221,7 +187,7 @@
       return "p_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
     }
     
-    // ---------- MAIN ROOM LISTENER (real-time UI) ----------
+    // ---------- MAIN LISTENER ----------
     function attachRoomListener(roomId) {
       if (unsubscribeRoom) unsubscribeRoom();
       const roomRef = ref(db, `rooms/${roomId}`);
@@ -233,54 +199,110 @@
           return;
         }
         renderGameUI(data);
-        checkAutoStart(data);
+        // Auto-advance logic based on state
+        handleStateTransitions(data);
       });
     }
     
-    // Auto start lobby -> game
-    function checkAutoStart(data) {
+    // Check conditions to automatically move to next phase
+    function handleStateTransitions(data) {
       if (!currentRoomId) return;
-      if (data.gameState === "waiting") {
-        const playersCount = data.players ? Object.keys(data.players).length : 0;
-        if (playersCount >= 2 && playersCount <= 6) {
-          // start the game
-          startGameSequence();
+      const players = data.players || {};
+      const totalPlayers = Object.keys(players).length;
+      if (totalPlayers === 0) return;
+      
+      const gameState = data.gameState;
+      
+      // ROUND 1: after all votes, compute roast and go to result
+      if (gameState === "round1_vote") {
+        const votes = data.round1?.votes || {};
+        const votedCount = Object.keys(votes).length;
+        if (votedCount === totalPlayers && totalPlayers >= 2) {
+          // compute roasted player
+          let voteCounts = {};
+          for (let voterId in votes) {
+            let targetId = votes[voterId];
+            voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
+          }
+          let maxVotes = -1;
+          let roastedId = null;
+          for (let pid in voteCounts) {
+            if (voteCounts[pid] > maxVotes) {
+              maxVotes = voteCounts[pid];
+              roastedId = pid;
+            }
+          }
+          // tie breaker: pick first among those with max
+          if (!roastedId) roastedId = Object.keys(players)[0];
+          update(ref(db), {
+            [`rooms/${currentRoomId}/round1/roastedPlayerId`]: roastedId,
+            [`rooms/${currentRoomId}/gameState`]: "round1_result"
+          });
+        }
+      }
+      
+      // ROUND 2 SUBMIT: after all messages, go to guess phase
+      if (gameState === "round2_submit") {
+        const messages = data.round2?.messages || {};
+        const submittedCount = Object.keys(messages).length;
+        if (submittedCount === totalPlayers && totalPlayers >= 2) {
+          update(ref(db), { [`rooms/${currentRoomId}/gameState`]: "round2_guess" });
+        }
+      }
+      
+      // ROUND 2 GUESS: after all guesses, compute final scores and end game
+      if (gameState === "round2_guess") {
+        const guesses = data.round2?.guesses || {};
+        const guessedCount = Object.keys(guesses).length;
+        if (guessedCount === totalPlayers && totalPlayers >= 2 && !data.gameEnded) {
+          // prevent multiple calls
+          update(ref(db), { [`rooms/${currentRoomId}/gameEnded`]: true });
+          computeFinalScores(data);
         }
       }
     }
     
-    async function startGameSequence() {
-      const randomQuestion = funnyQuestions[Math.floor(Math.random() * funnyQuestions.length)];
+    async function computeFinalScores(data) {
+      const players = data.players;
+      const messages = data.round2?.messages || {};
+      const guesses = data.round2?.guesses || {};
+      const scoreUpdates = {};
+      for (let pid in players) scoreUpdates[pid] = players[pid].score;
+      
+      for (let [guesserId, guessMap] of Object.entries(guesses)) {
+        let correct = 0;
+        for (let [msgId, guessedPlayerId] of Object.entries(guessMap)) {
+          const originalAuthor = messages[msgId]?.authorId;
+          if (originalAuthor && guessedPlayerId === originalAuthor) correct++;
+        }
+        scoreUpdates[guesserId] = (scoreUpdates[guesserId] || 0) + (correct * 10);
+      }
+      // write back scores and set game over
       const updates = {};
-      updates[`rooms/${currentRoomId}/gameState`] = "round1_vote";
-      updates[`rooms/${currentRoomId}/round1`] = {
-        votes: {},
-        roastedPlayerId: null,
-        question: randomQuestion
-      };
-      updates[`rooms/${currentRoomId}/round2`] = { messages: {}, guesses: {}, submittedMessages: false };
+      for (let pid in scoreUpdates) {
+        updates[`rooms/${currentRoomId}/players/${pid}/score`] = scoreUpdates[pid];
+      }
+      updates[`rooms/${currentRoomId}/gameState`] = "game_over";
       await update(ref(db), updates);
     }
     
-    // main UI render based on state
+    // Render UI based on current game state
     function renderGameUI(data) {
       const players = data.players || {};
-      const playersList = Object.values(players);
-      const currentPlayerData = players[currentPlayerId] || { nickname: "?", score: 0 };
-      const gameState = data.gameState;
+      const currentPlayer = players[currentPlayerId] || { nickname: "?", score: 0 };
       const roomCode = currentRoomId;
+      const totalPlayers = Object.keys(players).length;
       
-      // common header
       const headerHtml = `
         <div class="flex flex-wrap justify-between items-center gap-3 mb-4 bg-gray-900/50 p-3 rounded-2xl backdrop-blur-sm">
           <div class="flex items-center gap-2"><i class="fas fa-hashtag text-orange-400"></i><span class="font-mono font-bold">${roomCode}</span></div>
-          <div class="flex items-center gap-2"><i class="fas fa-users"></i><span>${Object.keys(players).length}/6</span></div>
-          <div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i><span class="font-bold">${currentPlayerData.score} pts</span></div>
+          <div class="flex items-center gap-2"><i class="fas fa-users"></i><span>${totalPlayers}/6</span></div>
+          <div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i><span class="font-bold">${currentPlayer.score} pts</span></div>
         </div>
       `;
       
-      // Lobby screen
-      if (gameState === "waiting") {
+      // LOBBY
+      if (data.gameState === "waiting") {
         const playerItems = Object.values(players).map(p => `<div class="bg-gray-800/70 rounded-full px-4 py-2 text-sm"><i class="fas fa-user-circle mr-2"></i>${p.nickname}</div>`).join('');
         renderScreen(`
           <div class="glass-card p-6 md:p-8 w-full max-w-2xl">
@@ -300,13 +322,12 @@
         return;
       }
       
-      // ROUND 1: VOTE
-      if (gameState === "round1_vote") {
-        const question = data.round1?.question || "sabse lazy kaun hai?";
-        const votesData = data.round1?.votes || {};
-        const alreadyVoted = votesData[currentPlayerId] !== undefined;
+      // ROUND 1 VOTE
+      if (data.gameState === "round1_vote") {
+        const question = data.round1?.question || funnyQuestions[0];
+        const votes = data.round1?.votes || {};
+        const alreadyVoted = votes[currentPlayerId] !== undefined;
         const otherPlayers = Object.entries(players).filter(([id]) => id !== currentPlayerId);
-        
         let voteButtons = '';
         if (!alreadyVoted) {
           voteButtons = otherPlayers.map(([id, p]) => `
@@ -317,15 +338,13 @@
         } else {
           voteButtons = `<div class="text-center p-4 bg-green-900/30 rounded-xl">✅ You voted! Waiting for others...</div>`;
         }
-        
-        const progress = `${Object.keys(votesData).length}/${Object.keys(players).length} voted`;
+        const progress = `${Object.keys(votes).length}/${totalPlayers} voted`;
         renderScreen(`
           <div class="glass-card p-6 md:p-8 w-full max-w-2xl">
             ${headerHtml}
             <div class="text-center mb-4"><span class="text-3xl">🗳️</span><h2 class="text-2xl font-bold">Round 1: Vote & Roast</h2><p class="text-orange-300 italic">${question}</p></div>
             <div class="mb-3 text-sm text-gray-400">${progress}</div>
             <div class="grid gap-3 max-h-96 overflow-y-auto">${voteButtons}</div>
-            ${!alreadyVoted ? '' : '<div class="mt-4 text-center text-gray-400"><i class="fas fa-spinner fa-pulse"></i> waiting for roast...</div>'}
             <button id="leaveGameBtn" class="mt-6 bg-red-800/50 w-full py-2 rounded-full text-sm">🚪 Exit game</button>
           </div>
         `);
@@ -333,8 +352,7 @@
           document.querySelectorAll("[data-vote-id]").forEach(btn => {
             btn.addEventListener("click", async (e) => {
               const targetId = btn.getAttribute("data-vote-id");
-              const voteRef = ref(db, `rooms/${currentRoomId}/round1/votes/${currentPlayerId}`);
-              await set(voteRef, targetId);
+              await set(ref(db, `rooms/${currentRoomId}/round1/votes/${currentPlayerId}`), targetId);
               gsap.to(btn, { scale: 0.95, duration: 0.1, yoyo: true, repeat: 1 });
             });
           });
@@ -343,11 +361,16 @@
         return;
       }
       
-      // round1_result (roast reveal)
-      if (gameState === "round1_result") {
+      // ROUND 1 RESULT (roast reveal + give participation points)
+      if (data.gameState === "round1_result") {
         const roastedId = data.round1?.roastedPlayerId;
-        const roastedPlayer = roastedId && players[roastedId] ? players[roastedId].nickname : "someone";
-        const randomRoast = roastMessages[Math.floor(Math.random() * roastMessages.length)].replace("{name}", roastedPlayer);
+        const roastedName = roastedId && players[roastedId] ? players[roastedId].nickname : "someone";
+        const randomRoast = roastMessages[Math.floor(Math.random() * roastMessages.length)].replace("{name}", roastedName);
+        // award points only once
+        if (!data.round1.pointsAwarded) {
+          giveParticipationPoints();
+          update(ref(db), { [`rooms/${currentRoomId}/round1/pointsAwarded`]: true });
+        }
         renderScreen(`
           <div class="glass-card p-6 md:p-8 w-full max-w-2xl text-center">
             ${headerHtml}
@@ -356,22 +379,23 @@
               <p class="text-xl font-black roast-text">🔥 ROAST ALERT 🔥</p>
               <p class="text-lg mt-2">${randomRoast}</p>
             </div>
-            <p class="mt-4 text-gray-300">✨ +2 points for voting (everyone gets participation points)</p>
+            <p class="mt-4 text-gray-300">✨ +2 points for everyone (participation)</p>
             <button id="nextRoundBtn" class="mt-6 bg-orange-600 hover:bg-orange-500 px-8 py-3 rounded-full font-bold shadow-xl transition-all">Next Round ➡️ Guess Who</button>
           </div>
         `);
-        // add participation points for all players after showing roast (once)
-        addParticipationPoints();
         document.getElementById("nextRoundBtn")?.addEventListener("click", async () => {
-          await update(ref(db), { [`rooms/${currentRoomId}/gameState`]: "round2_submit" });
+          await update(ref(db), { 
+            [`rooms/${currentRoomId}/gameState`]: "round2_submit",
+            [`rooms/${currentRoomId}/round2`]: { messages: {}, guesses: {} }
+          });
         });
         return;
       }
       
-      // ROUND 2: SUBMIT ANONYMOUS MESSAGES
-      if (gameState === "round2_submit") {
-        const round2 = data.round2 || { messages: {}, guesses: {} };
-        const alreadySubmitted = round2.messages && Object.keys(round2.messages).some(mid => round2.messages[mid].authorId === currentPlayerId);
+      // ROUND 2 SUBMIT MESSAGES
+      if (data.gameState === "round2_submit") {
+        const messages = data.round2?.messages || {};
+        const alreadySubmitted = Object.values(messages).some(m => m.authorId === currentPlayerId);
         let submitArea = '';
         if (!alreadySubmitted) {
           submitArea = `
@@ -381,8 +405,7 @@
         } else {
           submitArea = `<div class="text-center p-4 bg-green-800/30 rounded-xl"><i class="fas fa-check-circle"></i> Message sent! Waiting for others...</div>`;
         }
-        const msgCount = round2.messages ? Object.keys(round2.messages).length : 0;
-        const totalPlayers = Object.keys(players).length;
+        const msgCount = Object.keys(messages).length;
         renderScreen(`
           <div class="glass-card p-6 md:p-8 w-full max-w-2xl">
             ${headerHtml}
@@ -398,35 +421,22 @@
             const text = document.getElementById("anonMsg").value.trim();
             if (!text) return alert("Write something funny!");
             const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
-            const messageRef = ref(db, `rooms/${currentRoomId}/round2/messages/${messageId}`);
-            await set(messageRef, { authorId: currentPlayerId, text: text });
+            await set(ref(db, `rooms/${currentRoomId}/round2/messages/${messageId}`), { authorId: currentPlayerId, text: text });
             gsap.to("#submitMsgBtn", { scale: 1.05, duration: 0.2, yoyo: true });
           });
         }
         document.getElementById("leaveGameBtn2")?.addEventListener("click", leaveRoom);
-        
-        // auto-advance when all submitted
-        if (msgCount === totalPlayers && totalPlayers > 0 && !alreadySubmitted) {
-          setTimeout(async () => {
-            const stateSnap = await get(ref(db, `rooms/${currentRoomId}/gameState`));
-            if (stateSnap.val() === "round2_submit") {
-              await update(ref(db), { [`rooms/${currentRoomId}/gameState`]: "round2_guess" });
-            }
-          }, 1200);
-        }
         return;
       }
       
-      // ROUND 2: GUESS WHO (anonymous messages revealed)
-      if (gameState === "round2_guess") {
+      // ROUND 2 GUESS
+      if (data.gameState === "round2_guess") {
         const messages = data.round2?.messages || {};
+        const guesses = data.round2?.guesses || {};
+        const hasGuessed = guesses[currentPlayerId] !== undefined;
         const messagesList = Object.values(messages);
-        const guessesData = data.round2?.guesses || {};
-        const hasPlayerGuessed = guessesData[currentPlayerId] !== undefined;
-        const totalPlayersCount = Object.keys(players).length;
         
-        if (!hasPlayerGuessed && messagesList.length) {
-          // build guess form: each message with dropdown
+        if (!hasGuessed && messagesList.length) {
           let guessFormHtml = `<div class="space-y-6 max-h-[60vh] overflow-y-auto pr-2">`;
           messagesList.forEach((msg, idx) => {
             const options = Object.values(players).map(p => `<option value="${p.nickname}">${p.nickname}</option>`).join('');
@@ -457,45 +467,35 @@
               const messageKey = sel.getAttribute("data-mid");
               const selectedNick = sel.value;
               if (!selectedNick) return alert("Please guess for all messages!");
-              // find player id by nickname
               const playerEntry = Object.entries(players).find(([id, p]) => p.nickname === selectedNick);
               if (!playerEntry) return;
               guessMap[messageKey] = playerEntry[0];
             }
-            // store guesses
             await set(ref(db, `rooms/${currentRoomId}/round2/guesses/${currentPlayerId}`), guessMap);
             gsap.to("#submitGuessesBtn", { scale: 1.05, duration: 0.2, yoyo: true });
           });
           document.getElementById("leaveGuessBtn")?.addEventListener("click", leaveRoom);
         } else {
-          // waiting or final scores display (after everyone guessed)
-          const allPlayersIds = Object.keys(players);
-          const guessesCount = Object.keys(guessesData).length;
-          const allGuessed = guessesCount === totalPlayersCount && totalPlayersCount > 0;
-          if (allGuessed && messagesList.length > 0) {
-            // compute scores final
-            computeAndEndGame(players, messages, guessesData);
-          } else {
-            renderScreen(`
-              <div class="glass-card p-8 text-center max-w-xl">
-                ${headerHtml}
-                <i class="fas fa-hourglass-half text-5xl text-orange-400 animate-pulse"></i>
-                <h2 class="text-2xl mt-4">Waiting for all players to guess...</h2>
-                <p>Guessed: ${guessesCount}/${totalPlayersCount}</p>
-                <button id="leaveWaitBtn" class="mt-6 bg-red-800/50 px-5 py-2 rounded-full">Leave</button>
-              </div>
-            `);
-            document.getElementById("leaveWaitBtn")?.addEventListener("click", leaveRoom);
-          }
+          const guessedCount = Object.keys(guesses).length;
+          renderScreen(`
+            <div class="glass-card p-8 text-center max-w-xl">
+              ${headerHtml}
+              <i class="fas fa-hourglass-half text-5xl text-orange-400 animate-pulse"></i>
+              <h2 class="text-2xl mt-4">Waiting for all players to guess...</h2>
+              <p>Guessed: ${guessedCount}/${totalPlayers}</p>
+              <button id="leaveWaitBtn" class="mt-6 bg-red-800/50 px-5 py-2 rounded-full">Leave</button>
+            </div>
+          `);
+          document.getElementById("leaveWaitBtn")?.addEventListener("click", leaveRoom);
         }
         return;
       }
       
-      // GAME OVER + SCOREBOARD + REPLAY
-      if (gameState === "game_over") {
+      // GAME OVER SCREEN
+      if (data.gameState === "game_over") {
         const finalPlayers = Object.values(players).sort((a,b)=>b.score - a.score);
         const winner = finalPlayers[0];
-        const replayHtml = `
+        renderScreen(`
           <div class="glass-card p-6 md:p-8 w-full max-w-2xl text-center">
             ${headerHtml}
             <i class="fas fa-trophy text-6xl text-yellow-400 mb-2"></i>
@@ -509,50 +509,34 @@
             <button id="replayBtn" class="bg-orange-500 hover:bg-orange-400 px-8 py-3 rounded-full font-bold text-xl mt-2"><i class="fas fa-undo-alt"></i> REPLAY 🔁</button>
             <button id="exitAfterGameBtn" class="mt-3 bg-gray-700 w-full py-2 rounded-full">Exit to Lobby</button>
           </div>
-        `;
-        renderScreen(replayHtml);
+        `);
         document.getElementById("replayBtn")?.addEventListener("click", resetGameForReplay);
         document.getElementById("exitAfterGameBtn")?.addEventListener("click", leaveRoom);
         return;
       }
       
-      renderScreen(`<div class="glass-card p-8">Loading game state...</div>`);
+      // fallback
+      renderScreen(`<div class="glass-card p-8">Loading...</div>`);
     }
     
-    async function addParticipationPoints() {
+    async function giveParticipationPoints() {
       const playersSnap = await get(ref(db, `rooms/${currentRoomId}/players`));
       const players = playersSnap.val();
       if (!players) return;
       const updates = {};
       for (let pid in players) {
-        const oldScore = players[pid].score || 0;
-        updates[`rooms/${currentRoomId}/players/${pid}/score`] = oldScore + 2;
+        updates[`rooms/${currentRoomId}/players/${pid}/score`] = (players[pid].score || 0) + 2;
       }
       await update(ref(db), updates);
     }
     
-    async function computeAndEndGame(players, messages, guessesData) {
-      // scoring: each correct guess = +10 points
-      const messagesList = Object.entries(messages);
-      const playerScores = {};
-      for (let pid in players) playerScores[pid] = players[pid].score || 0;
-      
-      for (let [guesserId, guessMapping] of Object.entries(guessesData)) {
-        let correctCount = 0;
-        for (let [msgId, guessedPlayerId] of Object.entries(guessMapping)) {
-          const originalAuthor = messages[msgId]?.authorId;
-          if (originalAuthor && guessedPlayerId === originalAuthor) correctCount++;
-        }
-        const pointsEarned = correctCount * 10;
-        playerScores[guesserId] = (playerScores[guesserId] || 0) + pointsEarned;
-      }
-      // write back scores
-      const scoreUpdates = {};
-      for (let [pid, newScore] of Object.entries(playerScores)) {
-        scoreUpdates[`rooms/${currentRoomId}/players/${pid}/score`] = newScore;
-      }
-      scoreUpdates[`rooms/${currentRoomId}/gameState`] = "game_over";
-      await update(ref(db), scoreUpdates);
+    async function startGameSequence() {
+      const randomQuestion = funnyQuestions[Math.floor(Math.random() * funnyQuestions.length)];
+      const updates = {};
+      updates[`rooms/${currentRoomId}/gameState`] = "round1_vote";
+      updates[`rooms/${currentRoomId}/round1`] = { votes: {}, roastedPlayerId: null, question: randomQuestion, pointsAwarded: false };
+      updates[`rooms/${currentRoomId}/round2`] = { messages: {}, guesses: {} };
+      await update(ref(db), updates);
     }
     
     async function resetGameForReplay() {
@@ -567,8 +551,9 @@
       const resetData = {
         gameState: "waiting",
         players: playersReset,
-        round1: { votes: {}, roastedPlayerId: null, question: null },
-        round2: { messages: {}, guesses: {}, submittedMessages: false },
+        round1: { votes: {}, roastedPlayerId: null, question: null, pointsAwarded: false },
+        round2: { messages: {}, guesses: {} },
+        gameEnded: false
       };
       await update(ref(db, `rooms/${currentRoomId}`), resetData);
     }
@@ -583,9 +568,16 @@
       showJoinScreen();
     }
     
-    function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+    function escapeHtml(str) {
+      return str.replace(/[&<>]/g, function(m){
+        if(m==='&') return '&amp;';
+        if(m==='<') return '&lt;';
+        if(m==='>') return '&gt;';
+        return m;
+      });
+    }
     
-    // initial
+    // Initial load
     const storedId = sessionStorage.getItem("roastPlayerId");
     const storedRoom = sessionStorage.getItem("roastRoomId");
     if (storedId && storedRoom) {
