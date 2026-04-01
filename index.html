@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
+  <title>Vote & Roast + Guess Who</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              1: "#7c3aed",
+              2: "#ec4899",
+              3: "#06b6d4",
+              4: "#111827"
+            }
+          },
+          boxShadow: {
+            glow: "0 20px 60px rgba(168,85,247,.25)"
+          }
+        }
+      }
+    };
+  </script>
+
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="min-h-screen text-white antialiased">
+  <div class="fixed inset-0 -z-10 bg-[#050816]">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_28%),radial-gradient(circle_at_top_right,rgba(6,182,212,0.18),transparent_30%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.14),transparent_35%)]"></div>
+  </div>
+
+  <div class="relative mx-auto min-h-screen max-w-6xl px-4 py-6 md:px-6 md:py-10">
+    <header class="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-center md:justify-between">
+      <div>
+        <p class="mb-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.24em] text-fuchsia-200">
+          😂🔥 Realtime party game
+        </p>
+        <h1 class="text-3xl font-black tracking-tight md:text-5xl">
+          Vote & Roast <span class="text-fuchsia-400">+</span> Guess Who
+        </h1>
+        <p class="mt-2 max-w-2xl text-sm text-slate-300 md:text-base">
+          Join the room, vote on spicy group questions, roast the winner, then guess who wrote the anonymous message.
+        </p>
+      </div>
+
+      <div class="glass flex items-center gap-3 px-4 py-3 text-xs text-slate-300">
+        <span class="text-lg">⚡</span>
+        <div>
+          <div class="font-semibold text-white">2–6 Players</div>
+          <div>Firebase RTDB • GitHub Pages</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+      <section class="space-y-6">
+        <!-- HOME -->
+        <div id="homeView" class="glass screen-card p-5 md:p-8">
+          <div class="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-bold">Start the chaos</h2>
+              <p class="mt-2 text-sm text-slate-300">
+                Create a room or join with a code. No login, no setup drama.
+              </p>
+            </div>
+            <div class="rounded-2xl bg-white/5 px-4 py-3 text-3xl">🎉</div>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block md:col-span-2">
+              <span class="mb-2 block text-sm font-medium text-slate-200">Your nickname</span>
+              <input
+                id="nicknameInput"
+                type="text"
+                maxlength="18"
+                placeholder="e.g. Meme King"
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-slate-500 focus:border-fuchsia-400 focus:outline-none"
+              />
+            </label>
+
+            <button id="createRoomBtn" class="btn-primary w-full">
+              <span>✨</span>
+              <span>Create Room</span>
+            </button>
+
+            <div class="flex gap-3">
+              <input
+                id="joinCodeInput"
+                type="text"
+                maxlength="5"
+                placeholder="ROOM"
+                class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-lg uppercase tracking-[0.35em] text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              />
+              <button id="joinRoomBtn" class="btn-secondary min-w-[120px]">
+                Join
+              </button>
+            </div>
+          </div>
+
+          <div id="homeHint" class="mt-5 rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm text-fuchsia-100">
+            Tip: Share the room code with your friends and start roasting.
+          </div>
+        </div>
+
+        <!-- LOBBY -->
+        <div id="lobbyView" class="glass screen-card hidden p-5 md:p-8">
+          <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="mb-2 text-xs uppercase tracking-[0.3em] text-fuchsia-300">Lobby</div>
+              <h2 class="text-2xl font-black md:text-3xl">
+                Room <span id="lobbyRoomCode" class="text-cyan-300">-----</span>
+              </h2>
+              <p id="lobbyStatus" class="mt-2 text-sm text-slate-300">
+                Waiting for players...
+              </p>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+              <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                <div class="text-xs text-slate-400">Auto start</div>
+                <div id="lobbyCountdown" class="text-lg font-bold text-white">--</div>
+              </div>
+              <button id="startNowBtn" class="btn-primary hidden">
+                🚀 Start Now
+              </button>
+            </div>
+          </div>
+
+          <div id="lobbyPlayers" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+        </div>
+
+        <!-- GAME -->
+        <div id="gameView" class="glass screen-card hidden p-5 md:p-8">
+          <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div id="gameRoundPill" class="mb-2 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
+                Round
+              </div>
+              <h2 id="gameTitle" class="text-2xl font-black md:text-3xl">Game On</h2>
+              <p id="gameSubtitle" class="mt-2 text-sm text-slate-300">
+                Make your move.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+              <div class="text-xs uppercase tracking-[0.24em] text-slate-400">Timer</div>
+              <div id="gameTimer" class="text-2xl font-black text-white">--</div>
+            </div>
+          </div>
+
+          <div id="gameContent"></div>
+        </div>
+
+        <!-- RESULTS -->
+        <div id="resultView" class="glass screen-card hidden p-5 md:p-8">
+          <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="mb-2 text-xs uppercase tracking-[0.3em] text-amber-300">Final Result</div>
+              <h2 id="championText" class="text-2xl font-black md:text-4xl">🏆 Champion</h2>
+              <p id="resultsSummary" class="mt-2 text-sm text-slate-300">
+                That escalated beautifully.
+              </p>
+            </div>
+
+            <button id="replayBtn" class="btn-primary hidden">
+              🔁 Replay
+            </button>
+          </div>
+
+          <div id="resultsBoard" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <aside class="space-y-6">
+        <div class="glass p-5">
+          <h3 class="text-lg font-bold">How it works</h3>
+          <div class="mt-4 space-y-4 text-sm text-slate-300">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="mb-1 font-semibold text-white">1. Vote & Roast</div>
+              <p>Vote on hilarious prompts like <span class="text-fuchsia-300">“sabse lazy kaun hai?”</span></p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="mb-1 font-semibold text-white">2. Roast drop</div>
+              <p>Top-voted player gets a silly roast and everyone watches the chaos.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="mb-1 font-semibold text-white">3. Guess Who</div>
+              <p>Anonymous messages appear one by one — guess who wrote each one.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="roomPanel" class="glass hidden p-5">
+          <div class="mb-4 flex items-center justify-between">
+            <div>
+              <div class="text-xs uppercase tracking-[0.24em] text-slate-400">Room</div>
+              <div id="miniRoomCode" class="text-2xl font-black text-cyan-300">-----</div>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+              <div class="text-xs text-slate-400">Players</div>
+              <div id="livePlayerCount" class="text-xl font-bold">0/6</div>
+            </div>
+          </div>
+
+          <div class="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div class="mb-1 text-xs uppercase tracking-[0.24em] text-slate-400">Phase</div>
+            <div id="miniPhase" class="font-semibold text-white">Lobby</div>
+          </div>
+
+          <div>
+            <div class="mb-2 text-xs uppercase tracking-[0.24em] text-slate-400">Live Scores</div>
+            <div id="scoreStrip" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <div id="reactionPanel" class="glass hidden p-5">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-lg font-bold">Emoji Reactions</h3>
+            <div class="text-xs text-slate-400">Tap to spam responsibly</div>
+          </div>
+
+          <div id="reactionButtons" class="grid grid-cols-5 gap-3"></div>
+
+          <button id="leaveRoomBtn" class="btn-danger mt-4 w-full">
+            Leave Room
+          </button>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toastContainer" class="pointer-events-none fixed right-4 top-4 z-50 flex w-[min(92vw,380px)] flex-col gap-3"></div>
+  <div id="emojiLayer" class="pointer-events-none fixed inset-0 z-40 overflow-hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
